@@ -1,0 +1,233 @@
+using System;
+using System.Drawing;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Microsoft.EntityFrameworkCore;
+using QLSV.DAL;
+
+namespace QLSV.UI
+{
+    public partial class Form1 : Form
+    {
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        // Khi Form được mở
+        private async void Form1_Load(object sender, EventArgs e)
+        {
+            await HienThiSinhVien();
+        }
+
+        // READ: Hiển thị danh sách sinh viên
+        private async Task HienThiSinhVien()
+        {
+            try
+            {
+                lblTrangThai.Text = "Đang tải danh sách...";
+                lblTrangThai.ForeColor = Color.Black;
+
+                using (var db = new AppDbContextSV2())
+                {
+                    var sinhViens = await db.Students
+                        .AsNoTracking()
+                        .OrderBy(s => s.Id)
+                        .ToListAsync();
+
+                    dgvSinhVien.DataSource = sinhViens;
+
+                    lblTrangThai.Text =
+                        $"Danh sách hiện có {sinhViens.Count} sinh viên.";
+                    lblTrangThai.ForeColor = Color.Green;
+                }
+            }
+            catch (Exception ex)
+            {
+                lblTrangThai.Text = "Không thể tải danh sách.";
+                lblTrangThai.ForeColor = Color.Red;
+
+                MessageBox.Show(
+                    "Chi tiết lỗi: " + ex.Message,
+                    "Thông báo lỗi",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        // Kiểm tra dữ liệu nhập
+        private bool KiemTraThongTin(out string hoTen, out double diem)
+        {
+            hoTen = txtHoTen.Text.Trim();
+            diem = 0;
+
+            if (hoTen.Length == 0)
+            {
+                MessageBox.Show("Bạn chưa nhập họ tên sinh viên.");
+                txtHoTen.Focus();
+                return false;
+            }
+
+            if (!double.TryParse(txtDiem.Text.Trim(), out diem))
+            {
+                MessageBox.Show("Điểm nhập vào không hợp lệ.");
+                txtDiem.Focus();
+                return false;
+            }
+
+            return true;
+        }
+
+        // CREATE: Thêm sinh viên mới
+        private async void btnThem_Click(object sender, EventArgs e)
+        {
+            if (!KiemTraThongTin(out string hoTen, out double diem))
+                return;
+
+            try
+            {
+                using (var db = new AppDbContextSV2())
+                {
+                    var sinhVien = new Student
+                    {
+                        FullName = hoTen,
+                        Grade = diem
+                    };
+
+                    db.Students.Add(sinhVien);
+                    await db.SaveChangesAsync();
+                }
+
+                MessageBox.Show("Đã thêm sinh viên thành công.");
+
+                LamMoiNhapLieu();
+                await HienThiSinhVien();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    ex.Message,
+                    "Lỗi thêm sinh viên",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        // UPDATE: Cập nhật thông tin sinh viên
+        private async void btnSua_Click(object sender, EventArgs e)
+        {
+            if (dgvSinhVien.CurrentRow?.DataBoundItem is not Student sinhVienChon)
+            {
+                MessageBox.Show("Hãy chọn sinh viên muốn chỉnh sửa.");
+                return;
+            }
+
+            if (!KiemTraThongTin(out string hoTen, out double diem))
+                return;
+
+            try
+            {
+                using (var db = new AppDbContextSV2())
+                {
+                    var sinhVien = await db.Students.FindAsync(sinhVienChon.Id);
+
+                    if (sinhVien == null)
+                    {
+                        MessageBox.Show("Sinh viên không còn tồn tại trong database.");
+                        await HienThiSinhVien();
+                        return;
+                    }
+
+                    sinhVien.FullName = hoTen;
+                    sinhVien.Grade = diem;
+
+                    await db.SaveChangesAsync();
+                }
+
+                MessageBox.Show("Đã cập nhật thông tin sinh viên.");
+
+                await HienThiSinhVien();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    ex.Message,
+                    "Lỗi cập nhật",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        // DELETE: Xóa sinh viên
+        private async void btnXoa_Click(object sender, EventArgs e)
+        {
+            if (dgvSinhVien.CurrentRow?.DataBoundItem is not Student sinhVienChon)
+            {
+                MessageBox.Show("Hãy chọn sinh viên muốn xóa.");
+                return;
+            }
+
+            DialogResult luaChon = MessageBox.Show(
+                $"Bạn muốn xóa sinh viên {sinhVienChon.FullName} chứ?",
+                "Xác nhận thao tác",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (luaChon != DialogResult.Yes)
+                return;
+
+            try
+            {
+                using (var db = new AppDbContextSV2())
+                {
+                    var sinhVien = await db.Students.FindAsync(sinhVienChon.Id);
+
+                    if (sinhVien == null)
+                    {
+                        MessageBox.Show("Không tìm thấy sinh viên cần xóa.");
+                        await HienThiSinhVien();
+                        return;
+                    }
+
+                    db.Students.Remove(sinhVien);
+                    await db.SaveChangesAsync();
+                }
+
+                MessageBox.Show("Đã xóa sinh viên.");
+
+                LamMoiNhapLieu();
+                await HienThiSinhVien();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    ex.Message,
+                    "Lỗi xóa sinh viên",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        // Xóa nội dung các ô nhập
+        private void LamMoiNhapLieu()
+        {
+            txtHoTen.Clear();
+            txtDiem.Clear();
+            txtHoTen.Focus();
+        }
+
+        // Khi chọn một dòng, đưa dữ liệu lên ô nhập
+        private void dgvSinhVien_CellClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0)
+                return;
+
+            if (dgvSinhVien.Rows[e.RowIndex].DataBoundItem is Student sinhVien)
+            {
+                txtHoTen.Text = sinhVien.FullName;
+                txtDiem.Text = sinhVien.Grade.ToString();
+            }
+        }
+    }
+}
